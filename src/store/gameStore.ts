@@ -79,6 +79,7 @@ interface GameState {
   profiles: Profile[]
   activeProfileId: string | null
   currentModule: AppScreen
+  soundEnabled: boolean
   quizSession: {
     active: boolean
     questions: QuizQuestion[]
@@ -90,10 +91,14 @@ interface GameState {
   setActiveProfile: (id: string) => void
   addProfile: (name: string, avatar: string) => void
   setModule: (module: AppScreen) => void
+  toggleSound: () => void
   startQuiz: (settings: QuizSettings) => void
   answerQuestion: (answer: number, remainder?: number) => { correct: boolean; points: number; showHint: boolean }
   nextQuestion: () => void
   endQuiz: () => void
+  abandonQuiz: () => void
+  importProfiles: (profiles: Partial<Profile>[]) => void
+  resetActiveProgress: () => void
   awardBadge: (profileId: string, badge: string) => void
   checkAchievements: (profileId: string) => void
 }
@@ -244,6 +249,7 @@ export const useGameStore = create<GameState>()(
       profiles: [],
       activeProfileId: null,
       currentModule: 'home' as AppScreen,
+      soundEnabled: true,
       quizSession: {
         active: false, questions: [], currentIndex: 0, startTime: 0,
         settings: { module: 'multiplication', questionCount: 10 },
@@ -262,6 +268,8 @@ export const useGameStore = create<GameState>()(
       },
 
       setModule: (module) => set({ currentModule: module }),
+
+      toggleSound: () => set(s => ({ soundEnabled: !s.soundEnabled })),
 
       startQuiz: (settings) => {
         const profile = get().activeProfile()
@@ -401,6 +409,45 @@ export const useGameStore = create<GameState>()(
 
         set({ profiles: newProfiles, quizSession: { ...quizSession, active: false } })
         get().checkAchievements(activeProfileId!)
+      },
+
+      abandonQuiz: () => set(s => ({ quizSession: { ...s.quizSession, active: false } })),
+
+      importProfiles: (incoming) => {
+        const normalized = (incoming || []).map(old => ({
+          ...defaultProfile(old.name || '', old.avatar || '🦁'),
+          ...old,
+          stats: { ...defaultProfile('', '').stats, ...(old.stats || {}) },
+          skillLog: old.skillLog || {},
+          weakAreas: old.weakAreas || {},
+          history: old.history || [],
+        })) as Profile[]
+        set(s => ({
+          profiles: normalized,
+          activeProfileId: normalized.find(p => p.id === s.activeProfileId) ? s.activeProfileId : null,
+        }))
+      },
+
+      resetActiveProgress: () => {
+        const { profiles, activeProfileId } = get()
+        const idx = profiles.findIndex(p => p.id === activeProfileId)
+        if (idx < 0) return
+        const fresh = defaultProfile('', '')
+        const newProfiles = [...profiles]
+        newProfiles[idx] = {
+          ...profiles[idx],
+          points: 0,
+          badges: [],
+          achievements: [],
+          dailyStreak: 0,
+          lastActivityDate: null,
+          stats: fresh.stats,
+          weakAreas: {},
+          skillLog: {},
+          salwahProgress: fresh.salwahProgress,
+          history: [],
+        }
+        set({ profiles: newProfiles })
       },
 
       awardBadge: (profileId, badge) => {

@@ -6,6 +6,8 @@ import { Stars } from '../ui/Stars'
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 import { toArabic } from '@/lib/arabicNum'
+import { playSound, unlockAudio } from '@/lib/sound'
+import { speak, buildQuestionSpeech, speechSupported } from '@/lib/speech'
 
 const PRAISE = ['أحسنت! 🎉', 'ممتاز يا بطل! 🏆', 'إجابة رائعة! ⭐', 'رائع جداً! 🌟', 'أنت نجم! 💫']
 const TRY_AGAIN = ['حاول مرة أخرى! 💪', 'قريب جداً! 🎯', 'لا تستسلم! 🔥']
@@ -40,9 +42,12 @@ export function QuizEngine() {
   const answerQuestion = useGameStore(s => s.answerQuestion)
   const nextQuestion = useGameStore(s => s.nextQuestion)
   const endQuiz = useGameStore(s => s.endQuiz)
+  const abandonQuiz = useGameStore(s => s.abandonQuiz)
   const setModule = useGameStore(s => s.setModule)
+  const soundEnabled = useGameStore(s => s.soundEnabled)
   const [input, setInput] = useState('')
   const [remInput, setRemInput] = useState('')
+  const [cmpSelected, setCmpSelected] = useState<number | null>(null)
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | 'hint' | 'showAnswer' | null>(null)
   const [points, setPoints] = useState(0)
   const [showConfetti, setShowConfetti] = useState(false)
@@ -65,17 +70,30 @@ export function QuizEngine() {
   useEffect(() => {
     setInput('')
     setRemInput('')
+    setCmpSelected(null)
     setFeedback(null)
     setShowChoices(false)
     setChoices([])
     if (!isComparison) setTimeout(() => inputRef.current?.focus(), 100)
   }, [currentIndex, isComparison])
 
-  if (!q || !quizSession.active) return null
+  if (!isFinished && (!q || !quizSession.active)) return null
 
   function advance() {
     setFeedback(null)
     if (isLastQuestion) { endQuiz(); setIsFinished(true) } else nextQuestion()
+  }
+
+  function handleExit() {
+    if (window.confirm('هل تريد الخروج من الاختبار؟ لن تُحتسب نتيجة هذه الجولة.')) {
+      abandonQuiz()
+      setModule('home')
+    }
+  }
+
+  function handleListen() {
+    unlockAudio()
+    speak(buildQuestionSpeech(q))
   }
 
   function handleSubmit(answerOverride?: number, remainderOverride?: number) {
@@ -88,18 +106,27 @@ export function QuizEngine() {
     const result = answerQuestion(ans, rem)
 
     if (result.correct) {
+      if (soundEnabled) playSound('correct')
       setFeedback('correct')
       setPoints(result.points)
       setShowConfetti(result.points === 2)
       setTimeout(() => setShowConfetti(false), 3000)
       setTimeout(advance, 1500)
-    } else if (result.showHint && !isComparison) {
+    } else if (result.showHint && isComparison) {
+      // comparison has no multiple-choice hint — reveal the correct symbol then move on
+      if (soundEnabled) playSound('wrong')
+      setCmpSelected(null)
+      setFeedback('showAnswer')
+      setTimeout(advance, 2500)
+    } else if (result.showHint) {
       const c = generateChoices(q.answer, q.type === 'remainder', q.remainder)
       setChoices(c)
       setShowChoices(true)
       setFeedback('hint')
     } else {
+      if (soundEnabled) playSound('wrong')
       setFeedback('wrong')
+      setCmpSelected(null)
       setShakeKey(k => k + 1)
       setTimeout(() => setFeedback(null), 1500)
     }
@@ -108,11 +135,13 @@ export function QuizEngine() {
   function handleChoiceSelect(choice: number[]) {
     const isCorrect = choice[0] === q.answer && (q.type !== 'remainder' || choice[1] === q.remainder)
     if (isCorrect) {
+      if (soundEnabled) playSound('correct')
       answerQuestion(choice[0], choice[1])
       setFeedback('correct')
       setPoints(0)
       setTimeout(advance, 1500)
     } else {
+      if (soundEnabled) playSound('wrong')
       answerQuestion(q.answer, q.remainder)
       setFeedback('showAnswer')
       setTimeout(advance, 2500)
@@ -181,6 +210,15 @@ export function QuizEngine() {
 
       {/* شريط التقدم */}
       <div className="max-w-lg mx-auto mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <button
+            onClick={handleExit}
+            className="flex items-center gap-1 text-gray-400 hover:text-red-500 font-bold text-sm bg-white/70 rounded-full px-3 py-1.5 shadow-sm active:scale-95 transition-all"
+            title="خروج من الاختبار"
+          >
+            ✕ خروج
+          </button>
+        </div>
         <div className="flex justify-between text-sm text-gray-600 mb-1">
           <span>سؤال {toArabic(currentIndex + 1)} من {toArabic(totalQuestions)}</span>
           <span>{toArabic(Math.round(progress))}٪</span>
@@ -258,12 +296,31 @@ export function QuizEngine() {
           {!feedback && (
             <>
               <ModuleLabel type={q.type} />
-              <div className="text-5xl font-black text-gray-800 mb-2">{questionLabel}</div>
+              {isComparison ? (
+                <div className="flex items-center justify-center gap-3 sm:gap-5 mb-2">
+                  <span className="text-5xl font-black text-gray-800">{toArabic(q.num1)}</span>
+                  <span className={`flex items-center justify-center w-20 h-20 rounded-2xl border-4 text-5xl font-black transition-all ${cmpSelected !== null ? 'border-indigo-500 bg-indigo-50 text-indigo-600' : 'border-dashed border-gray-300 text-gray-300'}`}>
+                    {cmpSelected !== null ? cmpSymbol(cmpSelected) : '؟'}
+                  </span>
+                  <span className="text-5xl font-black text-gray-800">{toArabic(q.num2)}</span>
+                </div>
+              ) : (
+                <div className="text-5xl font-black text-gray-800 mb-2">{questionLabel}</div>
+              )}
               {q.type === 'remainder' && (
                 <div className="text-gray-500 text-sm mt-2">أكمل: {toArabic(q.num1)} = {toArabic(q.num2)} × ؟ + ؟</div>
               )}
               {q.type === 'comparison' && (
                 <div className="text-gray-400 text-sm mt-2">اختر الرمز المناسب: &gt; أو = أو &lt;</div>
+              )}
+              {speechSupported() && (
+                <button
+                  onClick={handleListen}
+                  className="mt-3 inline-flex items-center gap-1.5 text-indigo-500 hover:text-indigo-700 font-bold text-sm bg-indigo-50 rounded-full px-4 py-2 active:scale-95 transition-all"
+                  aria-label="اقرأ السؤال"
+                >
+                  🔊 استمع للسؤال
+                </button>
               )}
             </>
           )}
@@ -272,7 +329,15 @@ export function QuizEngine() {
             <div className="text-center">
               <div className="text-3xl mb-2">😅</div>
               <div className="text-lg font-bold text-orange-700">{tryAgainMsg}</div>
-              <div className="text-5xl font-black text-gray-800 mt-2">{questionLabel}</div>
+              {isComparison ? (
+                <div className="flex items-center justify-center gap-3 mt-3">
+                  <span className="text-5xl font-black text-gray-800">{toArabic(q.num1)}</span>
+                  <span className="flex items-center justify-center w-16 h-16 rounded-2xl border-4 border-dashed border-gray-300 text-gray-300 text-4xl font-black">؟</span>
+                  <span className="text-5xl font-black text-gray-800">{toArabic(q.num2)}</span>
+                </div>
+              ) : (
+                <div className="text-5xl font-black text-gray-800 mt-2">{questionLabel}</div>
+              )}
             </div>
           )}
 
@@ -285,17 +350,20 @@ export function QuizEngine() {
           )}
         </Card>
 
-        {/* Comparison symbol buttons — always shown */}
+        {/* Comparison symbol buttons */}
         {isComparison && !feedback && (
           <Card>
             <div className="grid grid-cols-3 gap-3">
               {([['>', 1], ['=', 0], ['<', -1]] as const).map(([sym, val]) => (
-                <button key={sym} onClick={() => handleSubmit(val)}
-                  className="py-6 text-4xl font-black rounded-2xl border-2 border-indigo-200 text-indigo-600 hover:bg-indigo-50 active:scale-95 transition-all">
+                <button key={sym} onClick={() => setCmpSelected(val)}
+                  className={`py-6 text-4xl font-black rounded-2xl border-2 transition-all active:scale-95 ${cmpSelected === val ? 'border-indigo-500 bg-indigo-500 text-white shadow-lg' : 'border-indigo-200 text-indigo-600 hover:bg-indigo-50'}`}>
                   {sym}
                 </button>
               ))}
             </div>
+            <Button variant="primary" size="xl" className="w-full mt-4" disabled={cmpSelected === null} onClick={() => cmpSelected !== null && handleSubmit(cmpSelected)}>
+              تحقق ✓
+            </Button>
           </Card>
         )}
 
@@ -308,39 +376,42 @@ export function QuizEngine() {
                   <label className="text-xs text-gray-500 block mb-1 text-center">خارج القسمة</label>
                   <input
                     ref={inputRef}
-                    type="number"
+                    type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={input}
-                    onChange={e => setInput(e.target.value)}
+                    onChange={e => setInput(e.target.value.replace(/[^0-9]/g, ''))}
                     onKeyDown={e => e.key === 'Enter' && handleSubmit()}
                     className="w-full border-3 border-indigo-200 rounded-2xl px-4 py-4 text-3xl text-center font-black focus:outline-none focus:border-indigo-500"
                     placeholder="؟"
-                    min="0"
                   />
                 </div>
                 <div className="text-2xl font-black text-gray-400">باقي</div>
                 <div className="flex-1">
                   <label className="text-xs text-gray-500 block mb-1 text-center">الباقي</label>
                   <input
-                    type="number"
+                    type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={remInput}
-                    onChange={e => setRemInput(e.target.value)}
+                    onChange={e => setRemInput(e.target.value.replace(/[^0-9]/g, ''))}
                     onKeyDown={e => e.key === 'Enter' && handleSubmit()}
                     className="w-full border-3 border-indigo-200 rounded-2xl px-4 py-4 text-3xl text-center font-black focus:outline-none focus:border-indigo-500"
                     placeholder="؟"
-                    min="0"
                   />
                 </div>
               </div>
             ) : (
               <input
                 ref={inputRef}
-                type="number"
+                type="tel"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={input}
-                onChange={e => setInput(e.target.value)}
+                onChange={e => setInput(e.target.value.replace(/[^0-9]/g, ''))}
                 onKeyDown={e => e.key === 'Enter' && handleSubmit()}
                 className="w-full border-3 border-indigo-200 rounded-2xl px-4 py-5 text-4xl text-center font-black focus:outline-none focus:border-indigo-500"
                 placeholder="اكتب إجابتك هنا"
-                min="0"
               />
             )}
             <Button variant="primary" size="xl" className="w-full mt-4" onClick={() => handleSubmit()}>

@@ -48,6 +48,13 @@ export function HomeScreen() {
             <div className="text-gray-500">أيام</div>
           </div>
           <button
+            onClick={() => setModule('parent')}
+            className="text-gray-400 hover:text-gray-600 text-xl p-2"
+            title="الإعدادات"
+          >
+            ⚙️
+          </button>
+          <button
             onClick={() => useGameStore.setState({ activeProfileId: null })}
             className="text-gray-400 hover:text-gray-600 text-xl p-2"
             title="تغيير المستخدم"
@@ -77,7 +84,7 @@ export function HomeScreen() {
             <div className="flex items-center gap-3">
               <span className="text-4xl">{mod.emoji}</span>
               <div>
-                <div className="font-black text-lg leading-tight">{mod.title}</div>
+                <div className="font-black text-lg leading-tight">{mod.id === 'salwah' ? `وضع ${activeProfile.name}` : mod.title}</div>
                 <div className="text-white/80 text-xs mt-0.5">{mod.desc}</div>
               </div>
             </div>

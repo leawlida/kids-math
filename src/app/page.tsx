@@ -9,6 +9,7 @@ import { SubtractionLearn } from '@/components/SubtractionLearn'
 import { ComparisonLearn } from '@/components/ComparisonLearn'
 import { SalwahMode } from '@/components/SalwahMode'
 import { Dashboard } from '@/components/dashboard/Dashboard'
+import { Settings } from '@/components/Settings'
 import { QuizEngine } from '@/components/quiz/QuizEngine'
 
 export default function Page() {
@@ -28,6 +29,7 @@ export default function Page() {
     case 'comparison':     return <ComparisonLearn />
     case 'salwah':         return <SalwahMode />
     case 'dashboard':      return <Dashboard />
+    case 'parent':         return <Settings />
     default:               return <HomeScreen />
   }
 }

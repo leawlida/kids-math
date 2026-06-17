@@ -37,14 +37,14 @@ export function SalwahMode() {
       <div className="max-w-lg mx-auto">
         <div className="flex items-center justify-between mb-6">
           <button onClick={() => setModule('home')} className="text-purple-600 font-bold">← رجوع</button>
-          <h1 className="text-2xl font-black text-gray-800">🌟 وضع سلوى</h1>
+          <h1 className="text-2xl font-black text-gray-800">🌟 وضع {activeProfile.name}</h1>
           <button onClick={() => setShowInfo(!showInfo)} className="text-purple-500 text-2xl">ℹ️</button>
         </div>
 
         {showInfo && (
           <Card className="mb-4 bg-purple-50 border-2 border-purple-200">
             <p className="text-purple-800 font-semibold">
-              في وضع سلوى، تبدأ من جدول ٢ وتتقدم بالترتيب. تحتاج ٩٠٪ أو أكثر للانتقال للجدول التالي.
+              في وضع {activeProfile.name}، تبدأ من جدول ٢ وتتقدم بالترتيب. تحتاج ٩٠٪ أو أكثر للانتقال للجدول التالي.
               إذا انخفض أداؤك، يُعاد الجدول السابق تلقائياً.
             </p>
           </Card>
